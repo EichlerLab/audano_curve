@@ -12,10 +12,6 @@ workflow discovery_curve {
         File sample_order
         File reference_index
         File python_script
-
-        File output_bed
-        File output_tsv
-        File output_hap
         
 
         String name
@@ -40,14 +36,13 @@ workflow discovery_curve {
             docker = docker,
             mem_gb = mem_gb,
             n_cpu = n_cpu,
-            disk_size = disk_size,
-            out_bed = output_bed,
-            out_tsv = output_tsv,
-            out_hap = output_hap
-
+            disk_size = disk_size
     }
     
     output {
+        File output_bed = create_tables.output_bed
+        File output_tsv = create_tables.output_tsv
+        File output_hap = create_tables.output_hap
         File output_gts = create_tables.output_gts
         File output_counts = create_tables.output_counts
     }
@@ -65,16 +60,15 @@ task create_tables {
         File python_script
         String name
 
-        File out_bed
-        File out_tsv
-        File out_hap
-
         String docker
         String mem_gb
         String n_cpu
         Int disk_size
     }
 
+    String out_bed = name + ".out.bed"
+    String out_tsv = name + ".out.tsv"
+    String out_hap = name + ".out.hap"
     String out_gts = name + ".out.gts"
     String out_counts = name + ".out.counts"
 
