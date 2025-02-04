@@ -156,67 +156,53 @@ def complete_collapse_gt(tsv, haps, sample_file, callable_dir, out_gt, fai):
     pd.DataFrame(reform_gt, columns=out_headers).to_csv(out_gt, sep='\t', index=False, header=True)
 
 
-
-
 def generate_count_tbl(samples_list, gt_tbl, count_tbl):
-
-    # bg_order = sort_samples(bg_samples)
-    # added_order = sort_samples(added_samples)
-
-    sample_list = samples_list
-
     df = pd.read_csv(gt_tbl, sep='\t')
-    hap_colums = []
-
-    for sample in sample_list:
-        df[f'{sample}_h1'] = df[sample].str.split("|",expand=True)[0]
-        hap_colums.append(f'{sample}_h1')
-        df[f'{sample}_h2'] = df[sample].str.split("|",expand=True)[1]
-        hap_colums.append(f'{sample}_h2')
-
-    df = df[hap_colums].copy()
-    out_df = pd.DataFrame()
-    df["VAR"] = 0
-    df["OBS"] = 0
-    for sample in sample_list:
+    
+    # Create haplotype columns all at once
+    hap_columns = []
+    for sample in samples_list:
+        # Split the genotype column into haplotypes more efficiently
+        df[[f'{sample}_h1', f'{sample}_h2']] = df[sample].str.split('|', expand=True)
+        hap_columns.extend([f'{sample}_h1', f'{sample}_h2'])
+    
+    df = df[hap_columns].copy()
+    
+    # Pre-allocate results list
+    results = []
+    
+    # Process each sample+haplotype combination
+    for sample in samples_list:
         for hap in ['h1', 'h2']:
-            df["VAR"] = df.apply(
-                lambda row: row["VAR"] + 1 if row[f'{sample}_{hap}'] == "1" else row["VAR"],axis=1
-            )
-            df["OBS"] = df.apply(
-                lambda row: row["OBS"] + 1 if row[f'{sample}_{hap}'] != "." else row["OBS"],axis=1
-            )
-            df["FREQ"] = df["VAR"] / df["OBS"]
-            df_var = df.loc[df["VAR"] > 0].copy()
-            out_df = pd.concat(
-                [
-                    out_df,
-                    pd.DataFrame.from_dict(
-                        {
-                            "SINGLETON": [
-                                len(df_var.loc[(df_var["VAR"] == 1) & (df_var["FREQ"] != 1)])
-                            ],
-                            "POLY": [
-                                len(df_var.loc[(df_var["VAR"] > 1) & (df_var["FREQ"] < 0.5)])
-                            ],
-                            "MAJOR": [
-                                len(
-                                    df_var.loc[
-                                        (df_var["VAR"] > 1)
-                                        & (df_var["FREQ"] >= 0.5)
-                                        & (df_var["FREQ"] < 1)
-                                        ]
-                                )
-                            ],
-                            "FIXED": [len(df_var.loc[df_var["FREQ"] == 1])],
-                        }
-                    ),
-                ]
-            ).reset_index(drop=True)
+            hap_col = f'{sample}_{hap}'
+            
+            # Vectorized operations instead of apply
+            var_counts = (df[hap_columns] == '1').sum(axis=1)
+            obs_counts = (df[hap_columns] != '.').sum(axis=1)
+            freq = var_counts / obs_counts
+            
+            # Filter for variants present
+            mask = var_counts > 0
+            df_var = pd.DataFrame({
+                'VAR': var_counts[mask],
+                'FREQ': freq[mask]
+            })
+            
+            # Calculate counts using vectorized operations
+            result = {
+                'SINGLETON': len(df_var[(df_var['VAR'] == 1) & (df_var['FREQ'] != 1)]),
+                'POLY': len(df_var[(df_var['VAR'] > 1) & (df_var['FREQ'] < 0.5)]),
+                'MAJOR': len(df_var[(df_var['VAR'] > 1) & (df_var['FREQ'] >= 0.5) & (df_var['FREQ'] < 1)]),
+                'FIXED': len(df_var[df_var['FREQ'] == 1])
+            }
+            results.append(result)
             print(f"{sample}")
-    out_df.index = [i + 1 for i in out_df.index]
+    
+    # Create output DataFrame all at once
+    out_df = pd.DataFrame(results)
+    out_df.index = range(1, len(results) + 1)
     out_df.index.name = 'SAMPLE_ORDER'
-    out_df.to_csv(count_tbl,sep='\t',index=True)
+    out_df.to_csv(count_tbl, sep='\t', index=True)
 
 def create_plot(bg_samples, curve_tbl, png_out, ymax):
 
